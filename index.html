@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>모둠 편성기</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --card: #ffffff;
+    --text: #1f2430;
+    --muted: #5d6475;
+    --line: #d9dde5;
+    --accent: #2f6fde;
+    --accent-dark: #2358b5;
+    --error-bg: #fdecec;
+    --error: #b42318;
+    --ok-bg: #e8f5ec;
+    --ok: #1b7a3d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", sans-serif;
+    font-size: 18px;
+    line-height: 1.5;
+  }
+  main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 34px; margin: 0 0 20px; }
+  h2 { font-size: 22px; margin: 0 0 4px; }
+  .hint { color: var(--muted); font-size: 16px; margin: 0 0 10px; }
+
+  .inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .panel {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px;
+  }
+  textarea {
+    width: 100%;
+    height: 220px;
+    resize: vertical;
+    font: inherit;
+    font-size: 18px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+  }
+  textarea:focus { outline: 3px solid #bcd2f7; border-color: var(--accent); }
+  .count { margin: 8px 0 0; font-weight: bold; }
+
+  .actions { display: flex; align-items: center; gap: 12px; margin: 24px 0 12px; flex-wrap: wrap; }
+  button {
+    font: inherit;
+    border-radius: 10px;
+    cursor: pointer;
+  }
+  #makeBtn {
+    font-size: 24px;
+    font-weight: bold;
+    padding: 14px 36px;
+    border: none;
+    background: var(--accent);
+    color: #fff;
+  }
+  #makeBtn:hover { background: var(--accent-dark); }
+  #sampleBtn {
+    font-size: 16px;
+    padding: 10px 16px;
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--text);
+  }
+  #sampleBtn:hover { background: #eef1f6; }
+
+  #message { min-height: 1.5em; margin: 0 0 16px; padding: 0; font-size: 18px; white-space: pre-line; }
+  #message.error { background: var(--error-bg); color: var(--error); padding: 12px 16px; border-radius: 8px; }
+  #message.ok { background: var(--ok-bg); color: var(--ok); padding: 12px 16px; border-radius: 8px; }
+
+  .groups { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .group {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-top: 6px solid var(--accent);
+    border-radius: 12px;
+    padding: 14px 18px;
+  }
+  .group h3 { margin: 0 0 8px; font-size: 26px; }
+  .group h3 span { font-size: 18px; color: var(--muted); font-weight: normal; }
+  .group ul { margin: 0; padding: 0; list-style: none; }
+  .group li { font-size: 26px; padding: 2px 0; }
+  .group:nth-child(1) { border-top-color: #2f6fde; }
+  .group:nth-child(2) { border-top-color: #e0802b; }
+  .group:nth-child(3) { border-top-color: #2e9e5b; }
+  .group:nth-child(4) { border-top-color: #c2410c; }
+  .group:nth-child(5) { border-top-color: #7c4dcc; }
+  .group:nth-child(6) { border-top-color: #0e8a9a; }
+
+  @media (max-width: 760px) {
+    .inputs { grid-template-columns: 1fr; }
+    .groups { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>모둠 편성기</h1>
+
+  <section class="inputs">
+    <div class="panel">
+      <h2>학생 명단</h2>
+      <p class="hint">한 줄에 한 명씩 이름을 입력하세요.</p>
+      <textarea id="students" spellcheck="false"></textarea>
+      <p class="count" id="count">총 0명</p>
+    </div>
+    <div class="panel">
+      <h2>분리 조건</h2>
+      <p class="hint">같은 모둠이 되면 안 되는 두 학생을 한 줄에 쉼표로 적으세요. 예: 가나다, 라마바</p>
+      <textarea id="pairs" spellcheck="false"></textarea>
+      <p class="count" id="pairCount">0쌍</p>
+    </div>
+  </section>
+
+  <div class="actions">
+    <button id="makeBtn" type="button">6모둠 만들기</button>
+    <button id="sampleBtn" type="button">가상 예시 불러오기</button>
+  </div>
+  <p id="message" role="status"></p>
+
+  <section class="groups" id="groups"></section>
+</main>
+
+<script>
+  const GROUP_COUNT = 6;
+  const MAX_TRIES = 2000;
+  const STORAGE_KEY = "modum-maker-inputs";
+
+  // 실제 학생이 아닌 가상 이름
+  const SAMPLE_STUDENTS = [
+    "가온", "나래", "다솜", "라온", "마루", "바다", "사랑", "아라", "자람", "차오",
+    "카이", "타미", "파랑", "하늘", "가람", "누리", "도담", "로하", "미르", "보라",
+    "새봄", "여울", "재이", "초롱", "한결"
+  ];
+  const SAMPLE_PAIRS = ["가온, 나래", "마루, 바다", "하늘, 가람"];
+
+  const studentsEl = document.getElementById("students");
+  const pairsEl = document.getElementById("pairs");
+  const countEl = document.getElementById("count");
+  const pairCountEl = document.getElementById("pairCount");
+  const messageEl = document.getElementById("message");
+  const groupsEl = document.getElementById("groups");
+
+  function parseStudents() {
+    return studentsEl.value.split("\n").map(s => s.trim()).filter(Boolean);
+  }
+
+  function parsePairLines() {
+    return pairsEl.value.split("\n").map(s => s.trim()).filter(Boolean);
+  }
+
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        students: studentsEl.value,
+        pairs: pairsEl.value
+      }));
+    } catch (e) { /* 저장이 막힌 환경에서는 그냥 넘어감 */ }
+  }
+
+  function load() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if (saved) {
+        studentsEl.value = saved.students || "";
+        pairsEl.value = saved.pairs || "";
+        return;
+      }
+    } catch (e) { /* 저장 내용이 없거나 읽을 수 없음 */ }
+    fillSample();
+  }
+
+  function fillSample() {
+    studentsEl.value = SAMPLE_STUDENTS.join("\n");
+    pairsEl.value = SAMPLE_PAIRS.join("\n");
+  }
+
+  function updateCounts() {
+    countEl.textContent = "총 " + parseStudents().length + "명";
+    pairCountEl.textContent = parsePairLines().length + "쌍";
+  }
+
+  function showMessage(text, type) {
+    messageEl.textContent = text;
+    messageEl.className = type || "";
+  }
+
+  function shuffle(list) {
+    const a = list.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  // 입력을 검사하고, 문제가 있으면 오류 문장 목록을 돌려준다
+  function validate(students, pairLines) {
+    const errors = [];
+    if (students.length < GROUP_COUNT) {
+      errors.push("학생이 " + GROUP_COUNT + "명 이상 있어야 6모둠을 만들 수 있어요. (지금 " + students.length + "명)");
+    }
+
+    const seen = new Set();
+    const dupes = new Set();
+    students.forEach(n => { if (seen.has(n)) dupes.add(n); seen.add(n); });
+    if (dupes.size) {
+      errors.push("같은 이름이 두 번 이상 있어요: " + [...dupes].join(", ") + "\n → 구분할 수 있게 이름 뒤에 숫자 등을 붙여 주세요.");
+    }
+
+    const pairs = [];
+    pairLines.forEach((line, i) => {
+      const parts = line.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+      const where = "분리 조건 " + (i + 1) + "번째 줄(" + line + ")";
+      if (parts.length !== 2) {
+        errors.push(where + ": 이름 두 개를 쉼표로 구분해 적어 주세요.");
+        return;
+      }
+      if (parts[0] === parts[1]) {
+        errors.push(where + ": 서로 다른 두 학생을 적어 주세요.");
+        return;
+      }
+      const missing = parts.filter(p => !seen.has(p));
+      if (missing.length) {
+        errors.push(where + ": 명단에 없는 이름이에요 → " + missing.join(", "));
+        return;
+      }
+      pairs.push(parts);
+    });
+
+    return { errors, pairs };
+  }
+
+  // 분리 조건을 지키며 6모둠에 고르게 배정. 실패하면 null
+  function makeGroups(students, pairs) {
+    const conflicts = new Map(students.map(n => [n, new Set()]));
+    pairs.forEach(([a, b]) => { conflicts.get(a).add(b); conflicts.get(b).add(a); });
+
+    const base = Math.floor(students.length / GROUP_COUNT);
+    const extra = students.length % GROUP_COUNT;
+
+    for (let t = 0; t < MAX_TRIES; t++) {
+      // 어느 모둠이 한 명 더 받을지도 무작위로
+      const caps = shuffle(Array.from({ length: GROUP_COUNT }, (_, i) => base + (i < extra ? 1 : 0)));
+      const groups = Array.from({ length: GROUP_COUNT }, () => []);
+      // 조건이 많은 학생부터 배치하면 성공률이 높다
+      const order = shuffle(students).sort((a, b) => conflicts.get(b).size - conflicts.get(a).size);
+
+      let ok = true;
+      for (const name of order) {
+        const choices = [];
+        groups.forEach((g, i) => {
+          if (g.length < caps[i] && !g.some(m => conflicts.get(name).has(m))) choices.push(i);
+        });
+        if (!choices.length) { ok = false; break; }
+        groups[choices[Math.floor(Math.random() * choices.length)]].push(name);
+      }
+      if (ok) return groups.map(shuffle);
+    }
+    return null;
+  }
+
+  function render(groups) {
+    groupsEl.innerHTML = "";
+    groups.forEach((members, i) => {
+      const card = document.createElement("div");
+      card.className = "group";
+      const title = document.createElement("h3");
+      title.textContent = (i + 1) + "모둠 ";
+      const size = document.createElement("span");
+      size.textContent = "(" + members.length + "명)";
+      title.appendChild(size);
+      const ul = document.createElement("ul");
+      members.forEach(m => {
+        const li = document.createElement("li");
+        li.textContent = m;
+        ul.appendChild(li);
+      });
+      card.append(title, ul);
+      groupsEl.appendChild(card);
+    });
+  }
+
+  document.getElementById("makeBtn").addEventListener("click", () => {
+    const students = parseStudents();
+    const { errors, pairs } = validate(students, parsePairLines());
+    if (errors.length) {
+      groupsEl.innerHTML = "";
+      showMessage(errors.join("\n"), "error");
+      return;
+    }
+    const groups = makeGroups(students, pairs);
+    if (!groups) {
+      groupsEl.innerHTML = "";
+      showMessage("분리 조건을 모두 지키는 편성을 찾지 못했어요. 조건 수를 줄이거나 겹치는 조건을 확인해 주세요.", "error");
+      return;
+    }
+    render(groups);
+    const note = pairs.length ? " 분리 조건 " + pairs.length + "쌍을 모두 지켰어요." : "";
+    showMessage(students.length + "명을 6모둠으로 나눴어요." + note + " 다시 누르면 새로 섞어요.", "ok");
+  });
+
+  document.getElementById("sampleBtn").addEventListener("click", () => {
+    const hasInput = studentsEl.value.trim() || pairsEl.value.trim();
+    if (hasInput && !confirm("지금 입력한 내용을 가상 예시로 바꿀까요?")) return;
+    fillSample();
+    save();
+    updateCounts();
+    showMessage("");
+    groupsEl.innerHTML = "";
+  });
+
+  [studentsEl, pairsEl].forEach(el => el.addEventListener("input", () => { save(); updateCounts(); }));
+
+  load();
+  updateCounts();
+</script>
+</body>
+</html>
